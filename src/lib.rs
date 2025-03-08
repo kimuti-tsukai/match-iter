@@ -84,12 +84,12 @@ where
     }
 }
 
-pub trait MatchExt: Sized {
-    fn match_on<T, U>(self) -> Match<Self, T, U>;
+pub trait MatchExt: Iterator + Sized {
+    fn match_on<U>(self) -> Match<Self, Self::Item, U>;
 }
 
 impl<I: Iterator> MatchExt for I {
-    fn match_on<T, U>(self) -> Match<Self, T, U> {
+    fn match_on<U>(self) -> Match<Self, Self::Item, U> {
         Match {
             iter: self,
             patterns: Vec::new(),
