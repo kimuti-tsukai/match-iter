@@ -3,12 +3,21 @@ struct Pattern<T, U> {
     action: Box<dyn Fn(T) -> U>,
 }
 
-pub struct Match<I, T, U> {
+pub struct Match<I, T, U, D = fn() -> U> {
     iter: I,
     patterns: Vec<Pattern<T, U>>,
+    default: Option<D>,
 }
 
-impl<I, T, U> Match<I, T, U> {
+impl<I, T, U, D> Match<I, T, U, D> {
+    fn new(iter: I) -> Self {
+        Self {
+            iter,
+            patterns: Vec::new(),
+            default: None,
+        }
+    }
+
     pub fn arm<F, G>(mut self, filter: F, action: G) -> Self
     where
         F: Fn(&T) -> bool + 'static,
@@ -21,20 +30,18 @@ impl<I, T, U> Match<I, T, U> {
         self
     }
 
-    pub fn default<F>(self, default: F) -> MatchDefault<I, T, U, F>
-    where
-        F: Fn() -> U,
-    {
-        MatchDefault {
-            r#match: self,
-            default,
+    pub fn default(self, default: D) -> Self {
+        Self {
+            default: Some(default),
+            ..self
         }
     }
 }
 
-impl<I, T, U> Iterator for Match<I, T, U>
+impl<I, T, U, D> Iterator for Match<I, T, U, D>
 where
     I: Iterator<Item = T>,
+    D: Fn() -> U,
 {
     type Item = U;
 
@@ -44,43 +51,8 @@ where
                 .iter()
                 .find(|pattern| (pattern.filter)(&item))
                 .map(|pattern| (pattern.action)(item))
+                .or_else(|| self.default.as_ref().map(|f| f()))
         })
-    }
-}
-
-pub struct MatchDefault<I, T, U, F> {
-    r#match: Match<I, T, U>,
-    default: F,
-}
-
-impl<I, T, U, F> MatchDefault<I, T, U, F>
-where
-    F: Fn() -> U,
-{
-    pub fn arm<G, H>(self, filter: G, action: H) -> Self
-    where
-        G: Fn(&T) -> bool + 'static,
-        H: Fn(T) -> U + 'static,
-    {
-        self.r#match.arm(filter, action).default(self.default)
-    }
-}
-
-impl<I, T, U, F> Iterator for MatchDefault<I, T, U, F>
-where
-    I: Iterator<Item = T>,
-    F: Fn() -> U,
-{
-    type Item = U;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.r#match.iter.next()?;
-        self.r#match
-            .patterns
-            .iter()
-            .find(|pattern| (pattern.filter)(&item))
-            .map(|pattern| (pattern.action)(item))
-            .or_else(|| Some((self.default)()))
     }
 }
 
@@ -90,10 +62,7 @@ pub trait MatchExt: Iterator + Sized {
 
 impl<I: Iterator> MatchExt for I {
     fn match_on<U>(self) -> Match<Self, Self::Item, U> {
-        Match {
-            iter: self,
-            patterns: Vec::new(),
-        }
+        Match::new(self)
     }
 }
 
